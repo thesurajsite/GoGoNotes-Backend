@@ -1,0 +1,22 @@
+import dependencies
+
+folder structure
+
+MongoDB Connection
+📍 database/database.go
+
+User Model
+📍 models/user.go
+
+JWT Utility
+📍 utils/jwt.go
+
+Auth Handlers
+📍 handlers/auth.go
+
+Define Routes
+📍 routes/routes.go
+
+Step 8: main.go
+
+9: Run and Test
