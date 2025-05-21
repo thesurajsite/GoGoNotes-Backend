@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -18,7 +19,7 @@ func Connect() (*mongo.Client, *mongo.Collection, *mongo.Collection) {
 	defer cancel()
 
 	// MongoDB Connection String
-	connectionString := "mongodb+srv://thesurajsite:mniSKV@gopad-notes.8oozd.mongodb.net/?retryWrites=true&w=majority&appName=GoPad-Notes"
+	connectionString := os.Getenv("MONGO_URI")
 
 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(connectionString))
 	if err != nil {
