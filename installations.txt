@@ -1,0 +1,18 @@
+Installations:- 
+
+go mod init github.com/suraj/GoGONotes
+go get github.com/gorilla/mux
+go get go.mongodb.org/mongo-driver/mongo
+go get github.com/golang-jwt/jwt/v5
+go get golang.org/x/crypto/bcrypt
+go get github.com/joho/godotenv
+
+
+Sequence :-
+📍 database/database.go
+📍 models/user.go
+📍 utils/jwt.go
+📍 handlers/auth.go
+📍 routes/routes.go
+📍 main.go
+📍 Run and Test

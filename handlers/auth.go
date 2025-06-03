@@ -34,6 +34,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+	// 	w.Header().Set("Content-Type", "application/json")
+	// 	w.WriteHeader(http.StatusBadRequest)
+	// 	json.NewEncoder(w).Encode(map[string]interface{}{
+	// 		"status":  false,
+	// 		"message": err.Error(),
+	// 	})
+	// 	return
+	// }
+
 	_, err := h.userModel.Create(input.Email, input.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
