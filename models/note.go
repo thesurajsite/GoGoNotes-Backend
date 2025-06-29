@@ -2,6 +2,7 @@ package models
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson"
@@ -19,14 +20,30 @@ type Note struct {
 }
 
 type NoteModel struct {
-	collection *mongo.Collection
+	collection     *mongo.Collection
+	userCollection *mongo.Collection
 }
 
-func NewNoteModel(collection *mongo.Collection) *NoteModel {
-	return &NoteModel{collection: collection}
+func NewNoteModel(noteCollection, userCollection *mongo.Collection) *NoteModel {
+	return &NoteModel{
+		collection:     noteCollection,
+		userCollection: userCollection,
+	}
 }
 
 func (m *NoteModel) Create(userID primitive.ObjectID, title, body string) (*Note, error) {
+	// Validate user exists (similar to Order model pattern)
+	var userExists struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	err := m.userCollection.FindOne(context.Background(), bson.M{"_id": userID}).Decode(&userExists)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, fmt.Errorf("failed to find user: %v", err)
+	}
+
 	now := time.Now()
 	note := &Note{
 		UserID:    userID,
@@ -38,7 +55,7 @@ func (m *NoteModel) Create(userID primitive.ObjectID, title, body string) (*Note
 
 	result, err := m.collection.InsertOne(context.Background(), note)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create note: %v", err)
 	}
 
 	note.ID = result.InsertedID.(primitive.ObjectID)
@@ -46,15 +63,24 @@ func (m *NoteModel) Create(userID primitive.ObjectID, title, body string) (*Note
 }
 
 func (m *NoteModel) GetAll(userID primitive.ObjectID) ([]Note, error) {
+	var notes []Note
+
 	cursor, err := m.collection.Find(context.Background(), bson.M{"user_id": userID})
 	if err != nil {
-		return nil, err
+		return []Note{}, fmt.Errorf("failed to fetch notes: %v", err)
 	}
 	defer cursor.Close(context.Background())
 
-	var notes []Note
-	if err = cursor.All(context.Background(), &notes); err != nil {
-		return nil, err
+	for cursor.Next(context.Background()) {
+		var note Note
+		if err := cursor.Decode(&note); err != nil {
+			return []Note{}, fmt.Errorf("failed to decode note: %v", err)
+		}
+		notes = append(notes, note)
+	}
+
+	if notes == nil {
+		return []Note{}, nil
 	}
 
 	return notes, nil
@@ -62,14 +88,36 @@ func (m *NoteModel) GetAll(userID primitive.ObjectID) ([]Note, error) {
 
 func (m *NoteModel) GetByID(id primitive.ObjectID, userID primitive.ObjectID) (*Note, error) {
 	var note Note
-	err := m.collection.FindOne(context.Background(), bson.M{"_id": id, "user_id": userID}).Decode(&note)
+	err := m.collection.FindOne(context.Background(), bson.M{
+		"_id":     id,
+		"user_id": userID,
+	}).Decode(&note)
+
 	if err != nil {
-		return nil, err
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("note not found")
+		}
+		return nil, fmt.Errorf("failed to fetch note: %v", err)
 	}
+
 	return &note, nil
 }
 
 func (m *NoteModel) Update(id primitive.ObjectID, userID primitive.ObjectID, title, body string) (*Note, error) {
+	// First check if note exists and belongs to user
+	var existingNote Note
+	err := m.collection.FindOne(context.Background(), bson.M{
+		"_id":     id,
+		"user_id": userID,
+	}).Decode(&existingNote)
+
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, fmt.Errorf("note not found")
+		}
+		return nil, fmt.Errorf("failed to find note: %v", err)
+	}
+
 	update := bson.M{
 		"$set": bson.M{
 			"title":      title,
@@ -78,19 +126,46 @@ func (m *NoteModel) Update(id primitive.ObjectID, userID primitive.ObjectID, tit
 		},
 	}
 
-	_, err := m.collection.UpdateOne(
+	result, err := m.collection.UpdateOne(
 		context.Background(),
 		bson.M{"_id": id, "user_id": userID},
 		update,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to update note: %v", err)
+	}
+
+	if result.ModifiedCount == 0 {
+		return nil, fmt.Errorf("no note was updated")
 	}
 
 	return m.GetByID(id, userID)
 }
 
 func (m *NoteModel) Delete(id primitive.ObjectID, userID primitive.ObjectID) error {
-	_, err := m.collection.DeleteOne(context.Background(), bson.M{"_id": id, "user_id": userID})
-	return err
+	filter := bson.M{
+		"_id":     id,
+		"user_id": userID,
+	}
+
+	// First check if note exists and belongs to user
+	var note Note
+	err := m.collection.FindOne(context.Background(), filter).Decode(&note)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return fmt.Errorf("note not found")
+		}
+		return fmt.Errorf("failed to find note: %v", err)
+	}
+
+	result, err := m.collection.DeleteOne(context.Background(), filter)
+	if err != nil {
+		return fmt.Errorf("failed to delete note: %v", err)
+	}
+
+	if result.DeletedCount == 0 {
+		return fmt.Errorf("no note was deleted")
+	}
+
+	return nil
 }
